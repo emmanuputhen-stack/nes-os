@@ -138,6 +138,9 @@ load_bytes:
      sec
      sbc #2
      sta size+1
+     
+     ora size+0
+     beq @load_done
    
    @next_sector:   
      jsr advance_sector
@@ -230,44 +233,3 @@ load_file:
    clc
    rts
    
-;============================================================
-;Function:   create_folder
-;Layer:      High-Level API (system call)
-;Input:      8.3 folder name -> target_name[11 byte] (pad with space)
-;            Parent dir cluster ID -> dir_clus_lo,dir_clus_hi ($0000 = FAT16 root dir)
-;Output:     Success($00)/Fail($FF) flag -> Accumulator (A)
-;=============================================================
-create_folder:
-   lda #1
-   sta clus_count
-   jsr allocate_cluster_chain
-   bcc :+
-       rts
-       :
-   
-   lda clus_buff+0
-   sta start_clus_lo
-   lda clus_buff+1
-   sta start_clus_hi
-   
-   jsr init_folder_cluster
-   bcc :+
-       rts
-       :
-   
-   lda #0
-   sta size+0
-   sta size+1
-   
-   lda #$10 ;directory attribute byte
-   sta attribute_byte
-   jsr create_directory_entry
-   bcc :+
-       rts
-       :
-   
-   lda #0
-   clc
-   rts
- 
-     

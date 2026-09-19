@@ -119,6 +119,23 @@ read_bootsector:
   ; Modifies: A (Preserve X and Y)
   ;_______________________________________________
   ClusterToLBA:
+    lda cluster_lo
+    ora cluster_hi
+    bne @data_cluster
+
+ @root_dir:
+    ; Cluster 0 maps directly to root_start LBA
+    lda root_start+0
+    sta arg_3
+    lda root_start+1
+    sta arg_2
+    lda root_start+2
+    sta arg_1
+    lda root_start+3
+    sta arg_0
+    rts
+
+ @data_cluster:
     sec                  ;cluster - 2
     lda cluster_lo
     sbc #2
@@ -407,6 +424,7 @@ allocate_cluster_chain:
 
    jsr sd_write_block
    bcc :+
+       plp
        rts
        :
    
@@ -437,7 +455,7 @@ allocate_cluster_chain:
    dex
    bne @div_loop
  @store_count: 
-   sta clus_clus
+   sta clus_count 
    rts
 
      
@@ -489,3 +507,104 @@ allocate_cluster_chain:
     rts
    @no_more_sector:  ;A contain $FF
     rts
+    
+    
+ calc_append_offsets:
+    lda size+0            ;get byte ofset
+    sta byte_ofs_lo
+    lda size+1
+    and #$01
+    sta byte_ofs_hi
+    
+    lda size+1
+    lsr                 ;size+1>>1 & sec_per_clus-1
+    ldy sec_per_clus
+    dey
+    sty temp
+    
+    and temp
+    sta sector_index
+    
+    lda sec_per_clus
+    sec
+    sbc sector_index
+    sta sector_remain
+    rts
+
+
+link_two_chain:
+    lda fat_start+0
+    clc
+    adc cluster_hi
+    sta arg_3
+    lda fat_start+1
+    adc #0
+    sta arg_2
+    lda fat_start+2
+    adc #0
+    sta arg_1
+    lda fat_start+3
+    adc #0
+    sta arg_0
+    
+    lda #<sd_buff
+    sta buff_lo
+    lda #>sd_buff
+    sta buff_hi
+    
+    jsr sd_read_block
+    bcc :+
+        rts
+        :
+           ;Byte ofset = cluster_lo*2
+    
+    lda cluster_lo
+    asl
+    sta buff_lo
+    
+    lda #>sd_buff
+    adc #0
+    sta buff_hi
+    
+           ;Read next cluster
+    
+    ldy #0
+    lda clus_buff+0
+    sta (buff_lo),y
+   
+    iny
+    lda clus_buff+1
+    sta (buff_lo),y
+    
+    lda #<sd_buff
+    sta buff_lo
+    lda #>sd_buff
+    sta buff_hi
+  @write_FAT1:   
+    jsr sd_write_block
+    bcc :+
+        rts
+        :
+        
+  @write_FAT2:    
+    lda arg_3
+    clc
+    adc sec_per_fat+0
+    sta arg_3
+    
+    lda arg_2
+    adc sec_per_fat+1
+    sta arg_2
+    bcc :+
+    inc arg_1
+    bne :+
+    inc arg_0
+    :
+    
+    jsr sd_write_block
+    bcc :+
+       rts
+       :
+    clc
+    rts   
+       

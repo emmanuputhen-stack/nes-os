@@ -164,6 +164,10 @@ list_directory:
      bne @cmp_loop
      
    @name_matched:
+     ldy #11
+     lda (buff_lo),y
+     sta item_attr
+     
      ldy #26
      lda (buff_lo),y
      sta item_cluster_lo
@@ -247,11 +251,11 @@ list_directory:
      jmp @sector_loop  
      
      
-        ;-------------------------------------------------------------------------------
+   ;-------------------------------------------------------------------------------
    ;                resolve_path(High-Level)
    ; Input:  path_lo/hi -> null-terminated ASCII path string (e.g., "/DIR/FILE.TXT")
    ; Output: Success:        CLC, A = $00, cluster_lo/hi = target item cluster
-   ;         Path Not Found: CLC, A = $FF
+   ;         Path Not Found: SEC, A = $FF
    ;         SD Read Error:  SEC, A = SD error code
    ;-------------------------------------------------------------------------------
      
@@ -285,7 +289,7 @@ list_directory:
    @pad_loop:
      sta target_name,x  
      dex
-     bne @pad_loop
+     bpl @pad_loop
    @parse_name:  ;x already at 0
      lda (path_lo),y
      beq @path_ended
@@ -377,8 +381,8 @@ list_directory:
      rts
 
   @invalid_path:
-     clc
-     lda #$ff ;missing path flag
+     sec
+     lda #ERR_INV_PATH
      rts
 
 
@@ -664,6 +668,46 @@ create_directory_entry:
    clc
    rts
   
-  
+;============================================================
+; Function:   create_folder
+; Layer:      High-Level API (system call)
+; Input:      8.3 folder name -> target_name[11 byte] (pad with space)
+;             Parent dir cluster ID -> dir_clus_lo,dir_clus_hi ($0000 = FAT16 root dir)
+; Output:     Success($00)/Fail($FF) flag -> Accumulator (A)
+;=============================================================
+create_folder:
+   lda #1
+   sta clus_count
+   jsr allocate_cluster_chain
+   bcc :+
+       rts
+       :
+   
+   lda clus_buff+0
+   sta start_clus_lo
+   lda clus_buff+1
+   sta start_clus_hi
+   
+   jsr init_folder_cluster
+   bcc :+
+       rts
+       :
+   
+   lda #0
+   sta size+0
+   sta size+1
+   
+   lda #$10 ;directory attribute byte
+   sta attribute_byte
+   jsr create_directory_entry
+   bcc :+
+       rts
+       :
+   
+   lda #0
+   clc
+   rts
+ 
+     
   
     
